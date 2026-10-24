@@ -186,6 +186,11 @@
   .slot::after{content:"🐾";position:absolute;left:50%;top:14px;transform:translateX(-50%);font-size:13px;opacity:.32}
   .slot .led{position:absolute;right:12px;bottom:4px;width:6px;height:6px;border-radius:50%;background:#7ed6c1;box-shadow:0 0 8px #7ed6c1;animation:pulse 2s infinite}
   .slot.boing{animation:boing .28s ease}
+  .slot.puff{animation:puff .18s ease}
+  .emit-glow{position:absolute;left:50%;top:50%;width:54px;height:30px;border-radius:50%;transform:translate(-50%,-50%);opacity:0;pointer-events:none;background:radial-gradient(ellipse,rgba(255,246,214,.95),rgba(255,190,140,.45) 45%,transparent 75%);filter:blur(1px)}
+  .emit-glow.on{animation:emit .24s ease-out}
+  @keyframes emit{0%{opacity:.95;transform:translate(-50%,-50%) scale(.35)}100%{opacity:0;transform:translate(-50%,-50%) scale(1.55)}}
+  @keyframes puff{0%{filter:brightness(1)}35%{filter:brightness(1.18)}100%{filter:brightness(1)}}
   @keyframes boing{0%{transform:scale(1)}40%{transform:scale(1.05,.92)}70%{transform:scale(.98,1.03)}100%{transform:scale(1)}}
 
   .keypad{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
@@ -323,7 +328,8 @@
 
     <div class="mid">
       <div class="slot" id="slot">
-        <div class="mouth"></div>
+        <div class="mouth" id="mouth"></div>
+        <div class="emit-glow" id="emitGlow"></div>
         <span class="tag">FISH OUT</span>
         <span class="led"></span>
       </div>
@@ -362,6 +368,8 @@
   var critBar = $("#critBar");
   var ticker = $("#ticker");
   var slot = $("#slot");
+  var mouthEl = $("#mouth");
+  var emitGlow = $("#emitGlow");
   var mascot = $("#mascot");
   var canvas = $("#fx");
   var ctx = canvas.getContext("2d", { alpha: true });
@@ -504,9 +512,9 @@
     cacheSlot();
   }
   function cacheSlot() {
-    var r = slot.getBoundingClientRect();
+    var r = mouthEl.getBoundingClientRect();
     slotPoint.x = r.left + r.width / 2;
-    slotPoint.y = r.top + r.height * 0.5;
+    slotPoint.y = r.top + r.height / 2;
   }
   window.addEventListener("resize", resize, { passive: true });
   window.addEventListener("orientationchange", function () { setTimeout(resize, 180); }, { passive: true });
@@ -545,7 +553,7 @@
     var pal = crit ? pick([["#ffd9a8", "#f6b84b"], ["#ffc9d6", "#ff8fb1"]]) : pick(FISH_COLORS);
     addParticle({
       type: "fish",
-      x: fromTop ? rand(0, W) : x + rand(-8, 8),
+      x: fromTop ? rand(0, W) : x + rand(-4, 4),
       y: fromTop ? rand(-40, -10) : y + rand(-4, 4),
       vx: fromTop ? rand(-40, 40) : rand(-200, 200),
       vy: fromTop ? rand(80, 180) : rand(-540, -230),
@@ -561,7 +569,7 @@
     for (var i = 0; i < particles.length; i++) if (particles[i].type === "rain") n++;
     return n;
   }
-  function spawnRainFish() {
+  function spawnRainFish(x, y) {
     var n = countRain();
     if (n >= RAIN_MAX) {
       for (var i = 0; i < particles.length; i++) {
@@ -571,9 +579,9 @@
     var pal = pick([["#ffd9a8", "#f6b84b"], ["#ffc9d6", "#ff8fb1"], ["#9fe3ef", "#5cbccf"], ["#ffb27a", "#ef7a4e"]]);
     addParticle({
       type: "rain",
-      x: rand(-30, W + 30), y: rand(-70, -10),
-      vx: rand(-20, 20), vy: rand(70, 150),
-      g: 36, rot: rand(-0.5, 0.5), vr: rand(-2.2, 2.2),
+      x: x + rand(-10, 10), y: y + rand(-3, 3),
+      vx: rand(-260, 260), vy: rand(-760, -480),
+      g: 620, rot: rand(-0.6, 0.6), vr: rand(-3.2, 3.2),
       r: rand(7, 11), c1: pal[0], c2: pal[1],
       life: rand(2.6, 3.6), max: 3.6
     });
@@ -647,7 +655,7 @@
       for (var k = 0; k < 6; k++) spawnStar(x, y);
       for (var m = 0; m < 10; m++) spawnConfetti(x, y, true);
       var rainN = 10 + Math.min(10, state.combo);
-      for (var n = 0; n < rainN; n++) spawnRainFish();
+      for (var n = 0; n < rainN; n++) spawnRainFish(x, y);
       spawnRing(x, y, true);
       atm.classList.add("raining");
       clearTimeout(spawnBurst._rainT);
@@ -843,6 +851,7 @@
   var milestone = 0;
   var lastCritFx = 0;
   var lastBoing = 0;
+  var lastSlotCache = 0;
   function hit() {
     var now = performance.now();
     if (now - state.lastHit < 1600) state.combo = Math.min(99, state.combo + 1);
@@ -859,16 +868,23 @@
     queueBalance();
     saveSoon();
 
+    if (now - lastSlotCache > 500) { lastSlotCache = now; cacheSlot(); }
     var x = slotPoint.x, y = slotPoint.y;
     spawnBurst(x, y, crit);
     spawnText(x, y, "+" + fmt(gain), crit);
     if (!crit && state.combo >= 8) {
-      spawnRainFish();
-      if (state.combo >= 20) spawnRainFish();
+      spawnRainFish(x, y);
+      if (state.combo >= 20) spawnRainFish(x, y);
     }
 
     if (now - lastBoing > 90) {
       lastBoing = now;
+      slot.classList.remove("puff");
+      void slot.offsetWidth;
+      slot.classList.add("puff");
+      emitGlow.classList.remove("on");
+      void emitGlow.offsetWidth;
+      emitGlow.classList.add("on");
       slot.classList.remove("boing");
       void slot.offsetWidth;
       slot.classList.add("boing");
