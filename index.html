@@ -81,6 +81,7 @@
   }
   .atm.hot{box-shadow:0 26px 60px rgba(239,122,78,.3),0 0 0 5px rgba(255,158,122,.16),0 0 50px rgba(255,158,122,.3)}
   .atm.super{box-shadow:0 26px 60px rgba(239,122,78,.34),0 0 0 6px rgba(108,199,217,.2),0 0 70px rgba(246,184,75,.4)}
+  .atm.raining{box-shadow:0 26px 60px rgba(239,122,78,.3),0 0 0 5px rgba(108,199,217,.22),0 0 60px rgba(255,158,122,.4)}
   body.fever::before{animation:dots 3s linear infinite}
   @keyframes dots{to{background-position:26px 26px}}
 
@@ -483,7 +484,8 @@
   // ---------- Canvas 粒子引擎 ----------
   var DPR = 1, W = 0, H = 0;
   var particles = [];
-  var MAX = 300;
+  var MAX = 130;
+  var RAIN_MAX = 44;
   var running = false;
   var lastFrame = 0;
   var slotPoint = { x: 0, y: 0 };
@@ -492,7 +494,8 @@
     W = window.innerWidth;
     H = window.innerHeight;
     DPR = W < 520 ? 0.8 : 1;
-    MAX = W < 520 ? 90 : 140;
+    MAX = W < 520 ? 130 : 190;
+    RAIN_MAX = W < 520 ? 44 : 64;
     canvas.width = Math.round(W * DPR);
     canvas.height = Math.round(H * DPR);
     canvas.style.width = W + "px";
@@ -521,7 +524,15 @@
   function pick(arr) { return arr[(Math.random() * arr.length) | 0]; }
 
   function addParticle(p) {
-    if (particles.length >= MAX) particles.shift();
+    if (particles.length >= MAX) {
+      // 关键：新粒子进来时先淘汰“爆发型”旧粒子，永远不主动清掉还在下的小鱼干雨
+      var drop = -1;
+      for (var di = 0; di < particles.length; di++) {
+        if (particles[di].type !== "rain") { drop = di; break; }
+      }
+      if (drop < 0) return;
+      particles.splice(drop, 1);
+    }
     particles.push(p);
     if (!running) {
       running = true;
@@ -543,6 +554,28 @@
       r: crit ? rand(8, 12) : rand(6, 10),
       c1: pal[0], c2: pal[1],
       life: rand(0.9, 1.5), max: 1.5
+    });
+  }
+  function countRain() {
+    var n = 0;
+    for (var i = 0; i < particles.length; i++) if (particles[i].type === "rain") n++;
+    return n;
+  }
+  function spawnRainFish() {
+    var n = countRain();
+    if (n >= RAIN_MAX) {
+      for (var i = 0; i < particles.length; i++) {
+        if (particles[i].type === "rain") { particles.splice(i, 1); break; }
+      }
+    }
+    var pal = pick([["#ffd9a8", "#f6b84b"], ["#ffc9d6", "#ff8fb1"], ["#9fe3ef", "#5cbccf"], ["#ffb27a", "#ef7a4e"]]);
+    addParticle({
+      type: "rain",
+      x: rand(-30, W + 30), y: rand(-70, -10),
+      vx: rand(-20, 20), vy: rand(70, 150),
+      g: 36, rot: rand(-0.5, 0.5), vr: rand(-2.2, 2.2),
+      r: rand(7, 11), c1: pal[0], c2: pal[1],
+      life: rand(2.6, 3.6), max: 3.6
     });
   }
   function spawnPaw(x, y) {
@@ -613,8 +646,12 @@
       for (var j = 0; j < 10; j++) spawnConfetti(x, y, false);
       for (var k = 0; k < 6; k++) spawnStar(x, y);
       for (var m = 0; m < 10; m++) spawnConfetti(x, y, true);
-      for (var n = 0; n < 6; n++) spawnFish(x, y, true, true);
+      var rainN = 10 + Math.min(10, state.combo);
+      for (var n = 0; n < rainN; n++) spawnRainFish();
       spawnRing(x, y, true);
+      atm.classList.add("raining");
+      clearTimeout(spawnBurst._rainT);
+      spawnBurst._rainT = setTimeout(function () { atm.classList.remove("raining"); }, 1600);
     } else {
       var count = 10 + Math.min(10, state.combo);
       for (var a = 0; a < count; a++) {
@@ -702,7 +739,7 @@
     ctx.save();
     ctx.translate(p.x, p.y);
     ctx.rotate(p.rot);
-    if (p.type === "fish") {
+    if (p.type === "fish" || p.type === "rain") {
       var fw = p.r * 3.4;
       ctx.drawImage(fishSprite(p.c1, p.c2), -fw / 2, -fw * 0.3, fw, fw * 0.6);
     } else if (p.type === "paw") {
@@ -825,6 +862,10 @@
     var x = slotPoint.x, y = slotPoint.y;
     spawnBurst(x, y, crit);
     spawnText(x, y, "+" + fmt(gain), crit);
+    if (!crit && state.combo >= 8) {
+      spawnRainFish();
+      if (state.combo >= 20) spawnRainFish();
+    }
 
     if (now - lastBoing > 90) {
       lastBoing = now;
